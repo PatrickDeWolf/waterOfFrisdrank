@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <title>AI oefening: water of frisdrank?</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+	body { font-family: Arial, sans-serif; padding: 20px; 
+	background: linear-gradient(135deg, #FFEEE6 0%, #FFD0B3 50%, #FFC39E 100%);
+	color: #1a1a1a; /* donkere tekst */
+	min-height: 100vh;
+	margin: 0;
+	-webkit-font-smoothing: antialiased;
+
+	}
+	#webcam-container { display:flex; gap:20px; align-items:flex-start; }
+	video { border: 1px solid #ccc; width: 320px; height: 240px; background: #000; }
+	#result { margin-top: 10px; font-size: 1.1em; }
+	.confidence { font-weight: bold; }
+	.controls { margin-top:10px; }
+	.code { background:#f4f4f4; padding:10px; font-family:monospace; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Wat zal het zijn???<br>
+  (Water vs Frisdrank)</h1>
+  <p>Start de webcam en houd een flesje voor de camera.<br>
+  De pagina gebruikt het getrainde model om te voorspellen.<br>
+  Let op dat je eerst Wampserver opstart. Deze draait op de achtergrond.<br>
+  Kies de juiste webcam. Soms zijn er meerdere webcams beschikbaar.<br>
+  zet het webcamschuifje naar links.<br></p>
+
+  <div id="webcam-container">
+    <video id="webcam" autoplay playsinline></video>
+    <div>
+      <div id="result">Nog geen voorspelling</div>
+      <div id="labels"></div>
+      <div class="controls">
+        <button id="startBtn">Start webcam</button>
+        <button id="stopBtn">Stop webcam</button>
+        <button id="snapBtn">Maak momentopname</button>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+  <h3>Werkwijze voor de klas</h3>
+  <ol>
+    <li>Train model in <a href="https://teachablemachine.withgoogle.com">Teachable Machine</a> en exporteer naar TensorFlow.js.</li>
+    <li>Plaats de modelmap in dezelfde folder als deze index.html (bijv. ./model/ )</li>
+    <li>Open deze pagina op http://localhost/ai/index.html zodat de webcam werkt.</li>
+    <li>Start de webcam en test met verschillende flesjes.</li>
+  </ol>
+
+  <hr>
+  <h3>Uitleg</h3>
+  <p>We hebben nu slechts 2 klassen gebruikt,<br>
+  maar we kunnen deze klassen uitbreiden om het model nog beter te trainen.<br>
+  Hoe meer klassen we hebben, hoe beter het model zal werken.
+  </p>
+
+  <!-- Import TensorFlow.js en Teachable Machine Image library -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+  <script>
+  // --- PAS DEZE URL AAN naar jouw model map (relatief pad) ---
+  const MODEL_URL = './model/'; // Zorg dat model.json en metadata.json hier staan
+
+  let model, maxPredictions;
+  const video = document.getElementById('webcam');
+  const resultDiv = document.getElementById('result');
+  const labelsDiv = document.getElementById('labels');
+
+  async function init() {
+    const modelURL = MODEL_URL + 'model.json';
+    const metadataURL = MODEL_URL + 'metadata.json';
+    model = await tmImage.load(modelURL, metadataURL);
+    maxPredictions = model.getTotalClasses();
+    resultDiv.innerText = 'Model geladen. Start de webcam.';
+  }
+
+  async function startWebcam() {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        await video.play();
+        predictLoop();
+      } catch (err) {
+        resultDiv.innerText = 'Kon de webcam niet starten: ' + err.message;
+      }
+    } else {
+      resultDiv.innerText = 'Webcam niet ondersteund in deze browser.';
+    }
+  }
+
+  async function stopWebcam() {
+    const stream = video.srcObject;
+    if (stream) {
+      const tracks = stream.getTracks();
+      tracks.forEach(t => t.stop());
+      video.srcObject = null;
+    }
+    resultDiv.innerText = 'Webcam gestopt.';
+    labelsDiv.innerHTML = '';
+  }
+
+  async function predictLoop() {
+    if (!video.srcObject) return;
+    const prediction = await model.predict(video, false);
+    let best = prediction[0];
+    prediction.forEach(p => { if (p.probability > best.probability) best = p; });
+    const label = best.className;
+    const conf = (best.probability * 100).toFixed(1);
+    resultDiv.innerHTML = 'Voorspelling: <span class="confidence">' + label + '</span> (' + conf + '%)';
+    labelsDiv.innerHTML = prediction.map(p => p.className + ': ' + (p.probability*100).toFixed(1) + '%').join('<br>');
+    setTimeout(() => requestAnimationFrame(predictLoop), 200);
+  }
+
+  async function snapOnce() {
+    if (!video.srcObject) { resultDiv.innerText = 'Start eerst de webcam.'; return; }
+    const prediction = await model.predict(video, false);
+    let best = prediction[0];
+    prediction.forEach(p => { if (p.probability > best.probability) best = p; });
+    alert('Snap voorspelling: ' + best.className + ' (' + (best.probability*100).toFixed(1) + '%)');
+  }
+
+  document.getElementById('startBtn').addEventListener('click', () => startWebcam());
+  document.getElementById('stopBtn').addEventListener('click', () => stopWebcam());
+  document.getElementById('snapBtn').addEventListener('click', () => snapOnce());
+
+  init();
+  </script>
+</body>
+</html>
